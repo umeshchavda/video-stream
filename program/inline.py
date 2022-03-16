@@ -17,51 +17,72 @@ along with this program. If not, see <https://www.gnu.org/licenses/licenses.html
 """
 
 
-from pyrogram import Client, errors
+from pyrogram import Client
+from program.utils.inline import markup
 from pyrogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InlineQueryResultPhoto,
     InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
 )
-from youtubesearchpython import VideosSearch
+from youtubesearchpython.__future__ import VideosSearch
 
 
 @Client.on_inline_query()
-async def inline(client: Client, query: InlineQuery):
+async def inline_mode(client: Client, query: InlineQuery):
     answers = []
-    search_query = query.query.lower().strip().rstrip()
-
-    if search_query == "":
-        await client.answer_inline_query(
-            query.id,
-            results=answers,
-            switch_pm_text="Type the YouTube video name to search !",
-            switch_pm_parameter="help",
-            cache_time=0,
-        )
+    request = query.query.strip().lower()
+    if request.strip() == "":
+        try:
+            await client.answer_inline_query(
+                query.id,
+                results=markup,
+                cache_time=10,
+            )
+        except Exception:
+            return
     else:
-        search = VideosSearch(search_query, limit=50)
-
-        for result in search.result()["result"]:
+        take = VideosSearch(request, limit=50)
+        result = (await take.next()).get("result")
+        for x in range(15):
+            title = (result[x]["title"]).title()
+            duration = result[x]["duration"]
+            views = result[x]["viewCount"]["short"]
+            thumbnail = result[x]["thumbnails"][0]["url"].split("?")[0]
+            channelurl = result[x]["channel"]["link"]
+            channel = result[x]["channel"]["name"]
+            link = result[x]["link"]
+            published = result[x]["publishedTime"]
+            description = f"{views} | {duration} mins | {channel} | {published}"
+            buttons = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text="🎬 watch on youtube",
+                            url=link,
+                        )
+                    ],
+                ]
+            )
+            results_text = f"""
+🗂 **Title:** [{title}]({link})
+⏱ **Duration:** `{duration}` mins
+👀 **Views:** `{views}`
+⏰ **Published:** {published}
+📣 **Channel:** [{channel}]({channelurl})"""
             answers.append(
-                InlineQueryResultArticle(
-                    title=result["title"],
-                    description="{}, {} views.".format(
-                        result["duration"], result["viewCount"]["short"]
-                    ),
-                    input_message_content=InputTextMessageContent(
-                        "🔗 https://www.youtube.com/watch?v={}".format(result["id"])
-                    ),
-                    thumb_url=result["thumbnails"][0]["url"],
+                InlineQueryResultPhoto(
+                    photo_url=thumbnail,
+                    title=title,
+                    thumb_url=thumbnail,
+                    description=description,
+                    caption=results_text,
+                    reply_markup=buttons,
                 )
             )
-
         try:
-            await query.answer(results=answers, cache_time=0)
-        except errors.QueryIdInvalid:
-            await query.answer(
-                results=answers,
-                cache_time=0,
-                switch_pm_text="error: search timed out",
-                switch_pm_parameter="",
+            return await client.answer_inline_query(
+                query.id, results=answers
             )
+        except Exception:
+            return
